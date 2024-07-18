@@ -1,4 +1,5 @@
 from typing import Dict, Type
+import threading
 
 
 import socket
@@ -180,6 +181,15 @@ class Response:
 
 
 class Client:
+    """
+    A class to represent a client connected to the TCP socket.
+
+    Attributes:
+        socket (socket) : TCP server socket.
+        connection (socket) : client socket.
+        address (_RetAddress) : client ip address.
+    """
+
     def __init__(self, socket: MySocket) -> None:
         self.socket = socket
         self.connection, self.address = self.socket.server_socket.accept()
@@ -193,15 +203,20 @@ class Client:
         self.connection.send(response.response)
 
 
+def handle_client(client: Client) -> None:
+    request = client.listen()
+    response = Response.construct_response(request)
+    client.send_response(response)
+
+
 def main():
     server_socket = MySocket("localhost", 4221)
 
-    client = Client(server_socket)
-    request = client.listen()
-    print(request)
-    response = Response.construct_response(request)
-    print(response)
-    client.send_response(response)
+    while True:
+        client_thread = threading.Thread(
+            target=handle_client, args=(Client(server_socket),)
+        )
+        client_thread.start()
 
 
 if __name__ == "__main__":
