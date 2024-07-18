@@ -1,25 +1,207 @@
+from typing import Dict, Type
+
+
 import socket
 
 
+class MySocket:
+    """
+    A class to represent a TCP socket bound to a host and port
+
+    Attributes:
+        host (str): The host address of the socket
+        port (int): The port of the socket
+        server_socket (Union[socket, socket.SocketType]): A socket bound to a host and port
+    """
+
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+        self.server_socket = socket.create_server((host, port), reuse_port=True)
+
+
+class Request:
+    """
+    A class to represent an HTTP request.
+
+    Attributes:
+        method (str): HTTP method (e.g., 'GET').
+        path (str): The path of the HTTP request.
+        headers (Dict[str, str]): HTTP headers.
+        body (str): The body of the HTTP request.
+    """
+
+    def __init__(
+        self, method: str, path: str, headers: Dict[str, str], body: str
+    ) -> None:
+        """
+        Constructs all the necessary attributes for the Request object.
+
+        Args:
+            method (str): HTTP method (e.g., 'GET').
+            path (str): The path of the HTTP request.
+            headers (Dict[str, str]): HTTP headers.
+            body (str): The body of the HTTP request.
+        """
+        self.method = method
+        self.path = path
+        self.headers = headers
+        self.body = body
+
+    @classmethod
+    def construct_request(cls: Type["Request"], request: bytes) -> "Request":
+        """
+        Constructs a Request object from a raw HTTP request in bytes.
+
+        Args:
+            request (bytes): The raw HTTP request in bytes.
+
+        Returns:
+            Request: An instance of the Request class.
+
+        Raises:
+            ValueError: If the request cannot be parsed due to an invalid format.
+        """
+        lines = request.decode("utf-8").split("\r\n")
+        if len(lines) < 3:
+            raise ValueError("Request too short to construct Request object")
+
+        request_line = lines[0].split()
+        request_verb = request_line[0]
+
+        if not request_verb or request_verb not in {"GET"}:
+            raise ValueError("Unsupported request method")
+        if not request_line[1] or request_line[1][0] != "/":
+            raise ValueError("Invalid request path")
+
+        method = request_verb
+        path = request_line[1]
+        headers = {}
+        lines = lines[1:]
+        idx = 0
+        for line in lines:
+            if line == "":
+                break
+            head_line = line.split(":")
+            if len(head_line) < 2:
+                raise ValueError(f"Invalid header line: {line}")
+            headers[head_line[0]] = head_line[1].lstrip()
+            idx += 1
+        body = lines[idx + 1] if len(lines) > idx + 1 else ""
+
+        return Request(method, path, headers, body)
+
+    def __str__(self):
+        return f"path: {self.path}\nmethod: {self.method}\nheaders: {self.headers}\nbody: {self.body}"
+
+
+class Response:
+    """
+    A class to represent an HTTP response.
+
+    Attributes:
+        status_code (int): HTTP method (e.g., 'GET').
+        headers (Dict[str, str]): HTTP headers.
+        body (str): The body of the HTTP response.
+    """
+
+    def __init__(
+        self, status_code: int, headers: None | Dict[str, str] = None, body: str = ""
+    ) -> None:
+        self.status_code = status_code
+        self.headers = headers if headers is not None else {}
+        self.body = body
+        self.response = self._build_response()
+
+    @classmethod
+    def construct_response(cls: Type["Response"], request: Request) -> "Response":
+        """
+        Constructs a Response object.
+
+        Args:
+            request (Request): The request object.
+
+        Returns:
+            Request: An instance of the Response class.
+
+        Raises:
+            ValueError: If the request cannot be parsed due to an invalid format.
+        """
+        if request.path == "/":
+            return Response(200, request.headers, request.body)
+        elif request.path.startswith("/echo/"):
+            response_headers = {
+                "Content-Type": "text/plain",
+                "Content-Length": str(len(request.path[6:])),
+            }
+            return Response(200, response_headers, request.path[6:])
+        elif request.path == "/user-agent":
+            user_agent = request.headers.get("User-Agent") or ""
+            response_headers = {
+                "Content-Type": "text/plain",
+                "Content-Length": str(len(user_agent)),
+            }
+            return Response(200, response_headers, user_agent)
+        else:
+            return Response(404, None)
+
+    def _build_response(self) -> bytes:
+        response = b""
+
+        if self.status_code == 200:
+            response += b"HTTP/1.1 200 OK\r\n"
+        elif self.status_code == 404:
+            response += b"HTTP/1.1 404 Not Found\r\n"
+
+        if self.headers and "Content-Type" not in self.headers:
+            self.headers["Content-Type"] = "text/plain"
+        if self.body != "":
+            self.headers["Content-Length"] = str(len(self.body))
+
+        for key, val in self.headers.items():
+            if (key == "Content-Type" or key == "Content-Length") and len(
+                self.body
+            ) == 0:
+                continue
+            elif key == "Host":
+                continue
+            response += (
+                bytes(key, encoding="utf-8")
+                + b": "
+                + bytes(val, encoding="utf-8")
+                + b"\r\n"
+            )
+        response += b"\r\n" + bytes(self.body, encoding="utf-8")
+
+        return response
+
+    def __str__(self):
+        return f"status: {self.status_code}\nheaders:{self.headers}\nbody:{self.body}"
+
+
+class Client:
+    def __init__(self, socket: MySocket) -> None:
+        self.socket = socket
+        self.connection, self.address = self.socket.server_socket.accept()
+
+    def listen(self) -> Request:
+        incoming_request = self.connection.recv(1024)
+        parsed_request = Request.construct_request(incoming_request)
+        return parsed_request
+
+    def send_response(self, response: Response) -> None:
+        self.connection.send(response.response)
+
+
 def main():
-    server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
-    connection, _ = server_socket.accept()
+    server_socket = MySocket("localhost", 4221)
 
-    request = connection.recv(1024).decode().split("\r\n")
-    path = request[0].split(" ")[1]
-    response = ""
-
-    if "echo" in path:
-        string = path[6:] if len(path) > 6 else ""
-        response = f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {len(string)}\r\n\r\n{string}"
-    elif path == "/":
-        response = "HTTP/1.1 200 OK\r\n\r\n"
-    elif path == "/user-agent":
-        user_agent = request[3].split()[1] if len(request[3]) >= 1 else ""
-        response = f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {len(user_agent)}\r\n\r\n{user_agent}"
-    else:
-        response = "HTTP/1.1 404 Not Found\r\n\r\n"
-    connection.send(response.encode())
+    client = Client(server_socket)
+    request = client.listen()
+    print(request)
+    response = Response.construct_response(request)
+    print(response)
+    client.send_response(response)
 
 
 if __name__ == "__main__":
