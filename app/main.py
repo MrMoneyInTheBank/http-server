@@ -2,7 +2,7 @@ from typing import Dict, Type
 import threading
 import sys
 import os
-
+import gzip
 
 import socket
 
@@ -140,6 +140,12 @@ class Response:
                 "Content-Type": "text/plain",
                 "Content-Length": str(len(request.path[6:])),
             }
+            if (
+                "Accept-Encoding" in request.headers
+                and request.headers["Accept-Encoding"] == "gzip"
+            ):
+                response_headers["Content-Encoding"] = "gzip"
+
             return Response(200, response_headers, request.path[6:])
         elif request.path == "/user-agent":
             user_agent = request.headers.get("User-Agent") or ""
@@ -185,6 +191,7 @@ class Response:
 
     def _build_response(self) -> bytes:
         response = b""
+        body = self.body
 
         if self.status_code == 200:
             response += b"HTTP/1.1 200 OK\r\n"
@@ -205,6 +212,12 @@ class Response:
                 self.body
             ) == 0:
                 continue
+            elif key == "Content-Encoding":
+                if (
+                    "Accept-Encoding" in self.headers
+                    and self.headers["Accept-Encoding"] != "gzip"
+                ):
+                    continue
             elif key == "Host":
                 continue
             response += (
@@ -213,8 +226,16 @@ class Response:
                 + bytes(val, encoding="utf-8")
                 + b"\r\n"
             )
-        response += b"\r\n" + bytes(self.body, encoding="utf-8")
 
+        if (
+            "Accept-Encoding" in self.headers
+            and self.headers["Accept-Encoding"] != "gzip"
+        ):
+            encoded_body = body.encode(encoding="utf-8")
+            compressed_body = gzip.compress(encoded_body)
+            response += b"\r\n" + compressed_body
+        else:
+            response += b"\r\n" + bytes(body, encoding="utf-8")
         return response
 
     def __str__(self):
@@ -247,6 +268,7 @@ class Client:
 def handle_client(client: Client) -> None:
     request = client.listen()
     response = Response.construct_response(request)
+    print(request, response, end="\n")
     client.send_response(response)
 
 
