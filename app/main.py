@@ -15,8 +15,7 @@ def main():
     elif path == "/":
         response = "HTTP/1.1 200 OK\r\n\r\n"
     elif path == "/user-agent":
-        print(request[3])
-        user_agent = request[3].split()[1]
+        user_agent = request[3].split()[1] if len(request[3]) >= 1 else ""
         response = f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {len(user_agent)}\r\n\r\n{user_agent}"
     else:
         response = "HTTP/1.1 404 Not Found\r\n\r\n"
