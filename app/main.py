@@ -1,5 +1,6 @@
 from typing import Dict, Type
 import threading
+import sys
 
 
 import socket
@@ -107,7 +108,10 @@ class Response:
     """
 
     def __init__(
-        self, status_code: int, headers: None | Dict[str, str] = None, body: str = ""
+        self,
+        status_code: int,
+        headers: None | Dict[str, str] = None,
+        body: str = "",
     ) -> None:
         self.status_code = status_code
         self.headers = headers if headers is not None else {}
@@ -143,6 +147,24 @@ class Response:
                 "Content-Length": str(len(user_agent)),
             }
             return Response(200, response_headers, user_agent)
+        elif request.path.startswith("/files/"):
+            directory = sys.argv[2]
+            filename = request.path[7:]
+
+            try:
+                with open(f"/{directory}/{filename}", "r", encoding="utf-8") as file:
+                    file_content = file.read()
+                    response_headers = {
+                        "Content-Type": "application/octet-stream",
+                        "Content-Length": str(len(file_content)),
+                    }
+                    return Response(
+                        200,
+                        response_headers,
+                        file_content,
+                    )
+            except:
+                return Response(404, None)
         else:
             return Response(404, None)
 
@@ -156,7 +178,7 @@ class Response:
 
         if self.headers and "Content-Type" not in self.headers:
             self.headers["Content-Type"] = "text/plain"
-        if self.body != "":
+        if self.body != "" and "Content-Length" not in self.headers:
             self.headers["Content-Length"] = str(len(self.body))
 
         for key, val in self.headers.items():
