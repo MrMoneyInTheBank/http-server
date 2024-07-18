@@ -229,7 +229,7 @@ class Response:
 
         if (
             "Accept-Encoding" in self.headers
-            and self.headers["Accept-Encoding"] != "gzip"
+            and self.headers["Accept-Encoding"] == "gzip"
         ):
             encoded_body = body.encode(encoding="utf-8")
             compressed_body = gzip.compress(encoded_body)
