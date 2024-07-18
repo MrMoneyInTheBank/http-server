@@ -140,10 +140,10 @@ class Response:
                 "Content-Type": "text/plain",
                 "Content-Length": str(len(request.path[6:])),
             }
-            if (
-                "Accept-Encoding" in request.headers
-                and request.headers["Accept-Encoding"] == "gzip"
-            ):
+            encodings = request.headers.get("Accept-Encoding", "")
+            encodings_list = encodings.split(", ")
+
+            if "gzip" in encodings_list:
                 response_headers["Content-Encoding"] = "gzip"
 
             return Response(200, response_headers, request.path[6:])
@@ -184,7 +184,7 @@ class Response:
                 with open(filepath, "w", encoding="utf-8") as file:
                     file.write(request.body)
                     return Response(201, None)
-            except Exception as e:
+            except:
                 return Response(500, None)
         else:
             return Response(404, None)
@@ -268,7 +268,6 @@ class Client:
 def handle_client(client: Client) -> None:
     request = client.listen()
     response = Response.construct_response(request)
-    print(request, response, end="\n")
     client.send_response(response)
 
 
