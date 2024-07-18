@@ -1,6 +1,7 @@
 from typing import Dict, Type
 import threading
 import sys
+import os
 
 
 import socket
@@ -71,7 +72,7 @@ class Request:
         request_line = lines[0].split()
         request_verb = request_line[0]
 
-        if not request_verb or request_verb not in {"GET"}:
+        if not request_verb or request_verb not in {"GET", "POST"}:
             raise ValueError("Unsupported request method")
         if not request_line[1] or request_line[1][0] != "/":
             raise ValueError("Invalid request path")
@@ -147,7 +148,7 @@ class Response:
                 "Content-Length": str(len(user_agent)),
             }
             return Response(200, response_headers, user_agent)
-        elif request.path.startswith("/files/"):
+        elif request.method == "GET" and request.path.startswith("/files/"):
             directory = sys.argv[2]
             filename = request.path[7:]
 
@@ -165,6 +166,20 @@ class Response:
                     )
             except:
                 return Response(404, None)
+        elif request.method == "POST" and request.path.startswith("/files/"):
+            directory = sys.argv[2]
+            filename = request.path[7:]
+
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            filepath = os.path.join(directory, filename)
+
+            try:
+                with open(filepath, "w", encoding="utf-8") as file:
+                    file.write(request.body)
+                    return Response(201, None)
+            except Exception as e:
+                return Response(500, None)
         else:
             return Response(404, None)
 
@@ -173,8 +188,12 @@ class Response:
 
         if self.status_code == 200:
             response += b"HTTP/1.1 200 OK\r\n"
+        elif self.status_code == 201:
+            response += b"HTTP/1.1 201 Created\r\n\r\n"
         elif self.status_code == 404:
             response += b"HTTP/1.1 404 Not Found\r\n"
+        elif self.status_code == 500:
+            response += b"HTTP/1.1 500 Internal Server Error"
 
         if self.headers and "Content-Type" not in self.headers:
             self.headers["Content-Type"] = "text/plain"
