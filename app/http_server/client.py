@@ -24,3 +24,9 @@ class Client:
 
     def send_response(self, response: Response) -> None:
         self.connection.send(response.response)
+
+    @staticmethod
+    def handle_client(client: "Client") -> None:
+        request = client.listen()
+        response = Response.construct_response(request)
+        client.send_response(response)
