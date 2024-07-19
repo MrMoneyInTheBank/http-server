@@ -1,7 +1,7 @@
 import threading
-from http_server.my_socket import MySocket
-from http_server.client import Client
-from http_server.http_response import Response
+from app.http_server.my_socket import MySocket
+from app.http_server.client import Client
+from app.http_server.http_response import Response
 
 
 def handle_client(client: Client) -> None:

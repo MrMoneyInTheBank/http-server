@@ -1,6 +1,6 @@
-from .my_socket import MySocket
-from .http_request import Request
-from .http_response import Response
+from app.http_server.my_socket import MySocket
+from app.http_server.http_request import Request
+from app.http_server.http_response import Response
 
 
 class Client:

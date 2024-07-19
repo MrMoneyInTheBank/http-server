@@ -1,8 +1,8 @@
 from typing import Dict, Type, Optional, Union
-from .http_request import Request
 import sys
 import os
 import gzip
+from app.http_server.http_request import Request
 
 
 class Response:
