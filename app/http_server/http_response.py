@@ -98,7 +98,14 @@ class Response:
 
     def _build_response(self) -> bytes:
         response = b""
-        body: Union[bytes, str] = self.body
+
+        response_body: bytes
+        if self.headers.get("Content-Encoding", None) == "gzip":
+            encoded_body: bytes = self.body.encode(encoding="utf-8")
+            compressed_body = gzip.compress(encoded_body)
+            response_body = compressed_body
+        else:
+            response_body = self.body.encode(encoding="utf-8")
 
         if self.status_code == 200:
             response += b"HTTP/1.1 200 OK\r\n"
@@ -111,8 +118,8 @@ class Response:
 
         if self.headers and "Content-Type" not in self.headers:
             self.headers["Content-Type"] = "text/plain"
-        if self.body != "" and "Content-Length" not in self.headers:
-            self.headers["Content-Length"] = str(len(self.body))
+        if len(response_body) > 0:
+            self.headers["Content-Length"] = str(len(response_body))
 
         for key, val in self.headers.items():
             if (key == "Content-Type" or key == "Content-Length") and len(
@@ -133,20 +140,8 @@ class Response:
                 + bytes(val, encoding="utf-8")
                 + b"\r\n"
             )
-        if self.headers.get("Content-Encoding", None) == "gzip":
-            if isinstance(body, bytes):
-                body = gzip.compress(body)
 
-                print(body)
-            else:
-                body = gzip.compress(body.encode())
-                print(body)
-
-        if isinstance(body, str):
-            response += b"\r\n" + bytes(body, encoding="utf-8")
-        else:
-            response += b"\r\n" + body.hex().encode(encoding="")
-        return response
+        return response + b"\r\n" + response_body
 
     def __str__(self):
         return f"status: {self.status_code}\nheaders:{self.headers}\nbody:{self.body}"
