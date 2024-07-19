@@ -1,5 +1,5 @@
 from typing import Dict, Type, Optional, Union
-from http_request import Request
+from .http_request import Request
 import sys
 import os
 import gzip
