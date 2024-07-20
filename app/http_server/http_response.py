@@ -1,8 +1,10 @@
-from typing import Dict, Type, Optional, Union
+from typing import Dict, Type, Optional
+import http
 import sys
 import os
 import gzip
 from app.http_server.http_request import Request
+from app.http_server.constants import HTTPRoutes, HTTPStatusLine
 
 
 class Response:
@@ -17,13 +19,15 @@ class Response:
 
     def __init__(
         self,
-        status_code: int,
+        status_code: http.HTTPStatus,
         headers: Optional[Dict[str, str]] = None,
         body: str = "",
+        encoding: str = "utf-8",
     ) -> None:
         self.status_code = status_code
         self.headers = headers if headers is not None else {}
         self.body = body
+        self.encoding = encoding
         self.response = self._build_response()
 
     @classmethod
@@ -40,9 +44,9 @@ class Response:
         Raises:
             ValueError: If the request cannot be parsed due to an invalid format.
         """
-        if request.path == "/":
-            return Response(200, request.headers, request.body)
-        elif request.path.startswith("/echo/"):
+        if request.path == HTTPRoutes.INDEX.value:
+            return Response(http.HTTPStatus.OK, request.headers, request.body)
+        elif request.path.startswith(HTTPRoutes.ECHO.value):
             response_headers = {
                 "Content-Type": "text/plain",
                 "Content-Length": str(len(request.path[6:])),
@@ -52,16 +56,17 @@ class Response:
 
             if "gzip" in encodings_list:
                 response_headers["Content-Encoding"] = "gzip"
-
-            return Response(200, response_headers, request.path[6:])
-        elif request.path == "/user-agent":
-            user_agent = request.headers.get("User-Agent") or ""
+            return Response(http.HTTPStatus.OK, response_headers, request.path[6:])
+        elif request.path == HTTPRoutes.USER_AGENT.value:
+            user_agent = request.headers.get("User-Agent", "")
             response_headers = {
                 "Content-Type": "text/plain",
                 "Content-Length": str(len(user_agent)),
             }
-            return Response(200, response_headers, user_agent)
-        elif request.method == "GET" and request.path.startswith("/files/"):
+            return Response(http.HTTPStatus.OK, response_headers, user_agent)
+        elif request.method == "GET" and request.path.startswith(
+            HTTPRoutes.FILES.value
+        ):
             directory = sys.argv[2]
             filename = request.path[7:]
 
@@ -73,13 +78,15 @@ class Response:
                         "Content-Length": str(len(file_content)),
                     }
                     return Response(
-                        200,
+                        http.HTTPStatus.OK,
                         response_headers,
                         file_content,
                     )
             except FileNotFoundError:
-                return Response(404, None)
-        elif request.method == "POST" and request.path.startswith("/files/"):
+                return Response(http.HTTPStatus.NOT_FOUND, None)
+        elif request.method == "POST" and request.path.startswith(
+            HTTPRoutes.FILES.value
+        ):
             directory = sys.argv[2]
             filename = request.path[7:]
 
@@ -90,31 +97,31 @@ class Response:
             try:
                 with open(filepath, "w", encoding="utf-8") as file:
                     file.write(request.body)
-                    return Response(201, None)
+                    return Response(http.HTTPStatus.CREATED, None)
             except IOError:
-                return Response(500, None)
+                return Response(http.HTTPStatus.INTERNAL_SERVER_ERROR, None)
         else:
-            return Response(404, None)
+            return Response(http.HTTPStatus.NOT_FOUND, None)
 
     def _build_response(self) -> bytes:
         response = b""
 
         response_body: bytes
         if self.headers.get("Content-Encoding", None) == "gzip":
-            encoded_body: bytes = self.body.encode(encoding="utf-8")
+            encoded_body: bytes = self.body.encode(encoding=self.encoding)
             compressed_body = gzip.compress(encoded_body)
             response_body = compressed_body
         else:
-            response_body = self.body.encode(encoding="utf-8")
+            response_body = self.body.encode(encoding=self.encoding)
 
-        if self.status_code == 200:
-            response += b"HTTP/1.1 200 OK\r\n"
-        elif self.status_code == 201:
-            response += b"HTTP/1.1 201 Created\r\n\r\n"
-        elif self.status_code == 404:
-            response += b"HTTP/1.1 404 Not Found\r\n"
-        elif self.status_code == 500:
-            response += b"HTTP/1.1 500 Internal Server Error"
+        if self.status_code == http.HTTPStatus.OK:
+            response += HTTPStatusLine.OK.value
+        elif self.status_code == http.HTTPStatus.CREATED:
+            response += HTTPStatusLine.CREATED.value
+        elif self.status_code == http.HTTPStatus.NOT_FOUND:
+            response += HTTPStatusLine.NOT_FOUND.value
+        elif self.status_code == http.HTTPStatus.INTERNAL_SERVER_ERROR:
+            response += HTTPStatusLine.INTERNAL_SERVER_ERROR.value
 
         if self.headers and "Content-Type" not in self.headers:
             self.headers["Content-Type"] = "text/plain"
@@ -122,22 +129,16 @@ class Response:
             self.headers["Content-Length"] = str(len(response_body))
 
         for key, val in self.headers.items():
-            if (key == "Content-Type" or key == "Content-Length") and len(
-                self.body
-            ) == 0:
+            if (key == "Content-Type" or key == "Content-Length") and not self.body:
                 continue
-            elif key == "Content-Encoding":
-                if (
-                    "Accept-Encoding" in self.headers
-                    and self.headers["Accept-Encoding"] != "gzip"
-                ):
-                    continue
+            elif key == "Content-Encoding" and val != "gzip":
+                continue
             elif key == "Host":
                 continue
             response += (
-                bytes(key, encoding="utf-8")
+                bytes(key, encoding=self.encoding)
                 + b": "
-                + bytes(val, encoding="utf-8")
+                + bytes(val, encoding=self.encoding)
                 + b"\r\n"
             )
 
