@@ -1,16 +1,9 @@
-import threading
-from app.http_server.my_socket import MySocket
-from app.http_server.client import Client
+from app.http_server.my_server import MyServer
 
 
 def main() -> None:
-    server_socket = MySocket("localhost", 4221)
-
-    while True:
-        client_thread = threading.Thread(
-            target=Client.handle_client, args=(Client(server_socket),)
-        )
-        client_thread.start()
+    server = MyServer("localhost", 4221)
+    server.start()
 
 
 if __name__ == "__main__":
